@@ -6,7 +6,7 @@ pragma solidity ^0.8.0;
 BigBank 合约支持转移管理员
 编写一个 Admin 合约， Admin 合约有自己的 Owner ，同时有一个取款函数 adminWithdraw(IBank bank) , adminWithdraw 中会调用 IBank 接口的 withdraw 方法从而把 bank 合约内的资金转移到 Admin 合约地址。
 BigBank 和 Admin 合约 部署后，把 BigBank 的管理员转移给 Admin 合约地址，模拟几个用户的存款，然后
-Admin 合约的Owner地址调用 adminWithdraw(IBank bank) 把 BigBank 的资金转移到 Admin 地址。
+Admin 合约的Owner地  址调用 adminWithdraw(IBank bank) 把 BigBank 的资金转移到 Admin 地址。
 */
 
 /// @title IBank 接口 - 标准存款和取款方法
