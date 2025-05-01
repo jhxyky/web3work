@@ -1,98 +1,110 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
-// 声明当前合约使用的Solidity版本是0.8.0及以上，这个是必须写的
+/*
+在 该挑战 的 Bank 合约基础之上，编写 IBank 接口及BigBank 合约，使其满足 Bank 实现 IBank， BigBank 继承自 Bank ， 同时 BigBank 有附加要求：
+要求存款金额 >0.001 ether（用modifier权限控制）
+BigBank 合约支持转移管理员
+编写一个 Admin 合约， Admin 合约有自己的 Owner ，同时有一个取款函数 adminWithdraw(IBank bank) , adminWithdraw 中会调用 IBank 接口的 withdraw 方法从而把 bank 合约内的资金转移到 Admin 合约地址。
+BigBank 和 Admin 合约 部署后，把 BigBank 的管理员转移给 Admin 合约地址，模拟几个用户的存款，然后
+Admin 合约的Owner地址调用 adminWithdraw(IBank bank) 把 BigBank 的资金转移到 Admin 地址。
+*/
 
-contract Bank {
-    address public owner;
-    // 管理员地址，部署合约的人就是管理员
+/// @title IBank 接口 - 标准存款和取款方法
+interface IBank {
+    function deposit() external payable;
+    function withddraw() external;
 
-    struct UserInfo {
-        address user;     // 用户的钱包地址
-        uint256 balance;  // 用户的存款余额
-    }
-    // 定义一个结构体，方便后面存储用户的地址和存款金额（比如排行榜）
+}
 
-    mapping(address => uint256) public balances;
-    // 定义一个映射表，记录每个用户的钱包地址 => 存款余额
-
-    UserInfo[3] public topUsers;
-    // 定义一个固定长度为3的数组，存放存款最多的前3名用户信息
-
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Not owner");
-        _;
-    }
-    // 定义一个修饰器，限制只有管理员（owner）才能调用某些函数
-    // `msg.sender` 是发起交易的人地址
-    // 如果不是owner，就抛出错误 "Not owner"
-    // `_` 是占位符，表示函数体的代码在这里执行
+/// @title Bank 合约 - 记录余额 + 排行榜功能
+contract Bank is IBank {
+    address public admin; // 管理员地址
+    mapping(address => uint256) public balances; // 用户地址 => 存款余额
+    address[3] public topUsers; // 存储前三名存款最多的用户
 
     constructor() {
-        owner = msg.sender;
+        admin = msg.sender; // 部署合约的人是管理员
     }
-    // 构造函数，部署合约时执行。把部署者的地址保存为owner。
 
-    receive() external payable {
-        deposit();
-    }
-    // 特殊的receive()函数：如果别人直接向合约地址转ETH，就自动调用deposit()。
-    // payable表示可以接收ETH。
-
-    function deposit() public payable {
+    /// @notice 用户存款
+    function deposit() external payable virtual override {
         require(msg.value > 0, "Deposit must be greater than 0");
-        // 存款金额必须大于0
 
-        balances[msg.sender] += msg.value;
-        // 把发起人的存款累加记录起来
+        balances[msg.sender] += msg.value; // 更新用户余额
 
-        _updateTopUsers(msg.sender);
-        // 更新排行榜，看一下这个用户是不是进了前3
+        _updateTopUsers(msg.sender); // 更新排行榜
     }
 
-    function withdraw() external onlyOwner {
-        payable(owner).transfer(address(this).balance);
-    }
-    // 只有管理员可以调用withdraw()，把合约里全部ETH转到管理员地址
-    // address(this).balance是当前合约账户里的ETH余额
-    // transfer是转账，payable(owner)确保目标地址可以收钱
+    /// @notice 管理员提取合约内全部余额
+    function withdraw() external override {
+        require(msg.sender == admin, "Only admin can withdraw");
 
+        payable(admin).transfer(address(this).balance); // 转账给管理员
+    }
+
+    /// @notice 内部函数：更新存款排行榜
     function _updateTopUsers(address user) internal {
-        uint256 userBalance = balances[user];
-        // 获取当前用户的总存款余额
-
-        // 先看这个用户是不是已经在排行榜里面了
         for (uint256 i = 0; i < 3; i++) {
-            if (topUsers[i].user == user) {
-                topUsers[i].balance = userBalance;
-                _sortTopUsers();
-                return;
+            // 如果位置为空，直接插入
+            if (topUsers[i] == address(0)) {
+                topUsers[i] = user;
+                break;
             }
-        }
 
-        // 如果不在排行榜上，看看是否有资格进榜
-        if (userBalance > topUsers[2].balance) {
-            // 如果这个用户的余额比第三名还多，就替换掉第三名
-            topUsers[2] = UserInfo(user, userBalance);
-            _sortTopUsers();
-        }
-    }
-
-    function _sortTopUsers() internal {
-        // 冒泡排序，把topUsers数组按存款额从高到低排列
-        for (uint256 i = 0; i < 2; i++) {
-            for (uint256 j = i + 1; j < 3; j++) {
-                if (topUsers[j].balance > topUsers[i].balance) {
-                    // 如果后面那个比前面的大，交换位置
-                    UserInfo memory temp = topUsers[i];
-                    topUsers[i] = topUsers[j];
-                    topUsers[j] = temp;
+            // 如果当前用户余额更大且不是同一个用户
+            if (balances[user] > balances[topUsers[i]] && user != topUsers[i]) {
+                // 往后挪一位
+                for (uint256 j = 2; j > i; j--) {
+                    topUsers[j] = topUsers[j-1];
                 }
+                topUsers[i] = user;
+                break;
             }
         }
     }
 
-    function getTopUsers() external view returns (UserInfo[3] memory) {
-        return topUsers;
+    /// @notice 查询某个用户余额
+    function getBalance(address user) external view returns (uint256) {
+        return balances[user];
     }
-    // 提供一个函数，可以让外部查看存款排行榜Top3
+}
+
+/// @title BigBank 合约 - 继承 Bank，并增加限制
+contract BigBank is Bank {
+    // 存款必须大于 0.001 ETH
+    modifier onlyBigDeposit() {
+        require(msg.value > 0.001 ether, "Deposit must be > 0.001 ether");
+        _;
+    }
+
+    /// @notice 重写 deposit，加上金额限制
+    function deposit() external payable override onlyBigDeposit {
+        balances[msg.sender] += msg.value;
+        _updateTopUsers(msg.sender);
+    }
+
+    /// @notice 管理员更换
+    function transferAdmin(address newAdmin) external {
+        require(msg.sender == admin, "Only admin can transfer admin");
+        require(newAdmin != address(0), "New admin cannot be zero address");
+        admin = newAdmin;
+    }
+}
+
+/// @title Admin 合约 - 管理 Bank / BigBank 的资金转移
+contract Admin {
+    address public owner;
+
+    constructor() {
+        owner = msg.sender; // 部署者是 owner
+    }
+
+    /// @notice 调用 Bank 的 withdraw，从银行合约取钱到 Admin 合约
+    function adminWithdraw(IBank bank) external {
+        require(msg.sender == owner, "Only owner can withdraw");
+        bank.withdraw(); // 通过接口调用
+    }
+
+    /// @notice 用于接收银行合约转过来的 ETH
+    receive() external payable {}
 }
