@@ -1,44 +1,50 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-/*
-编写一个 TokenBank 合约，可以将自己的 Token 存入到 TokenBank， 和从 TokenBank 取出。
-TokenBank 有两个方法：
-deposit() : 需要记录每个地址的存入数量；
-withdraw（）: 用户可以提取自己的之前存入的 token。
-*/
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+/// @title TokenBank - 存取 BaseERC20 Token 的银行
+interface IERC20 {
+    function transferFrom(address from, address to, uint256 amount) external returns (bool);
+    function transfer(address to, uint256 amount) external returns (bool);
+}
 
-contract TokenBank is Ownable {
+contract TokenBank {
     IERC20 public token;
+    mapping(address => uint256) public balances;
 
-    mapping(address => uint256) public balanceOf;
+    event Deposit(address indexed user, uint256 amount);
+    event Withdraw(address indexed user, uint256 amount);
 
     constructor(address _tokenAddress) {
         token = IERC20(_tokenAddress);
     }
 
-    // 用户存款
+    /// @notice 存Token
     function deposit(uint256 amount) external {
-        require(amount > 0, "Amount must be greater than 0");
+        require(amount > 0, "Deposit amount must be greater than 0");
 
-        // 用户需要先approve给Bank合约授权
         bool success = token.transferFrom(msg.sender, address(this), amount);
-        require(success, "Transfer failed");
+        require(success, "Token transfer failed");
 
-        balanceOf[msg.sender] += amount;
+        balances[msg.sender] += amount;
+
+        emit Deposit(msg.sender, amount);
     }
 
-    // 用户查看自己存了多少（balanceOf已经是public，可以直接查）
-    // function balanceOf(address user) external view returns (uint256) { }
+    /// @notice 取Token
+    function withdraw(uint256 amount) external {
+        require(amount > 0, "Withdraw amount must be greater than 0");
+        require(balances[msg.sender] >= amount, "Insufficient balance");
 
-    // 管理员提取所有Token
-    function withdraw() external onlyOwner {
-        uint256 balance = token.balanceOf(address(this));
-        require(balance > 0, "No tokens to withdraw");
+        balances[msg.sender] -= amount;
 
-        bool success = token.transfer(owner(), balance);
-        require(success, "Withdraw failed");
+        bool success = token.transfer(msg.sender, amount);
+        require(success, "Token transfer failed");
+
+        emit Withdraw(msg.sender, amount);
+    }
+
+    /// @notice 查询某个用户存在银行里的Token数量
+    function balanceOf(address user) external view returns (uint256) {
+        return balances[user];
     }
 }
